@@ -1,3 +1,13 @@
+import base64
+import io
+import urllib
+from urllib import request
+from PIL import Image, ImageOps
+from torchvision.transforms import ToPILImage
+
+from custom_nodes.DTAIComfyImageSubmit import config
+
+
 class SubmitImage:
     """
     A example node
@@ -47,6 +57,12 @@ class SubmitImage:
         return {
             "required": {
                 "image": ("IMAGE",),
+            },
+            "optional": {
+                "prompt": ("STRING", {
+                    "multiline": False,  # True if you want the field to look like the one on the ClipTextEncode node
+                    "default": ""
+                }),
                 "tags": ("STRING", {
                     "multiline": False,  # True if you want the field to look like the one on the ClipTextEncode node
                     "default": ""
@@ -59,9 +75,16 @@ class SubmitImage:
                     "multiline": False,  # True if you want the field to look like the one on the ClipTextEncode node
                     "default": ""
                 }),
+                "caption": ("STRING", {
+                    "multiline": False,  # True if you want the field to look like the one on the ClipTextEncode node
+                    "default": ""
+                }),
                 "set": ("STRING", {
                     "multiline": False,  # True if you want the field to look like the one on the ClipTextEncode node
                     "default": ""
+                }),
+                "private": ("INT", {
+                    "default": False
                 })
             },
         }
@@ -69,22 +92,47 @@ class SubmitImage:
     RETURN_TYPES = ()
     #RETURN_NAMES = ("image_output_name",)
 
-    FUNCTION = "test"
+    FUNCTION = "upload"
 
-    #OUTPUT_NODE = False
+    OUTPUT_NODE = True
 
     CATEGORY = "image"
 
-    def test(self, image, string_field, int_field, float_field, print_to_screen):
-        if print_to_screen == "enable":
-            print(f"""Your input contains:
-                string_field aka input text: {string_field}
-                int_field: {int_field}
-                float_field: {float_field}
-            """)
-        #do some processing on the image, in this example I just invert it
-        image = 1.0 - image
-        return (image,)
+    def upload(self, image, prompt, tags, title, alt, caption, set, private):
+        print("uploading image...")
+
+        # uriencode the parameters
+        tags = urllib.parse.quote(tags)
+        title = urllib.parse.quote(title)
+        alt = urllib.parse.quote(alt)
+        setName = urllib.parse.quote(set)
+        prompt = urllib.parse.quote(prompt)
+        caption = urllib.parse.quote(caption)
+
+        # Create a post request to submit the image as the post body to the backend
+        uri = "https://api.aiart.doubtech.com/comfyui/submit?key={}&tags={}&title={}&alt={}&set={}&prompt={}&caption={}&private={}".format(config.apikey, tags, title, alt, setName, prompt, caption, private)
+
+        num_images = image.size(0)
+        #iterate over the images
+        for i in range(num_images):
+            print("There are " + str(num_images) + " images in the batch")
+            img = image[i]
+
+            # Convert the image to a png
+            png = ToPILImage()(img.permute(2, 0, 1))
+            img_bytes = io.BytesIO()
+            png.save(img_bytes, format='PNG')
+            img_bytes.seek(0)
+
+            # Encode the image bytes to base64
+            encoded = base64.b64encode(img_bytes.getvalue()).decode('utf-8')
+
+            print("Submission uri: " + uri)
+            # Submit the image using a POST request
+            with request.urlopen(request.Request(uri, data=encoded.encode('utf-8'), method='POST')) as f:
+                print(f.read().decode('utf-8'))
+
+            return ()
 
 
 # A dictionary that contains all nodes you want to export with their names
