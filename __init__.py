@@ -1,11 +1,109 @@
-import base64
-import io
+import torch
+
+import os
+import sys
+import json
+import hashlib
+import traceback
+import math
+import time
+
 import urllib
+import io
+import base64
+
+from PIL import Image, ImageOps
+from PIL.PngImagePlugin import PngInfo
+import numpy as np
+import safetensors.torch
+
+import comfy.diffusers_load
+import comfy.samplers
+import comfy.sample
+import comfy.sd
+import comfy.utils
+
+import comfy.clip_vision
+
+import comfy.model_management
+import importlib
+
+import folder_paths
+import latent_preview
+
+import comfy
 from urllib import request
 from PIL import Image, ImageOps
-from torchvision.transforms import ToPILImage
+
+import folder_paths
+
+try:
+    from torchvision.transforms import ToPILImage
+except ImportError:
+    def ToPILImage():
+        pass
 
 from custom_nodes.DTAIComfyImageSubmit import config
+
+
+class RemoteLoader:
+    def __init__(self, path, uri):
+        self.data = {}
+        self.uri = uri
+        self.path = path
+
+        self.load()
+
+    def load(self):
+        try:
+            with urllib.request.urlopen(self.uri) as f:
+                self.data = json.loads(f.read().decode('utf-8'))
+            print(f"Loaded {self.path} from {self.uri}")
+        except Exception as e:
+            print(f"Failed to load {self.uri} for {self.path}: {e}")
+
+    def list(self):
+        try:
+            return list(self.data.keys())
+        except AttributeError:
+            return []
+
+    def filename(self, key):
+        if key not in self.data:
+            raise KeyError(f"Key {key} not found in {self.uri}")
+
+        # Use hashlib to create the md5 hash of the key
+        hash_object = hashlib.md5(key.encode())
+        md5_hash = hash_object.hexdigest()
+
+        # Combine self.path with md5_hash to get the filepath
+        return folder_paths.get_full_path(self.path, md5_hash)
+
+    def download(self, key):
+        if key not in self.data:
+            raise KeyError(f"Key {key} not found in {self.uri}")
+
+        filename = self.filename(key)
+
+        # If the file doesn't exist at that path, download and save it
+        if not os.path.exists(filename):
+            urllib.request.urlretrieve(self.data[key], filename)
+
+        return filename
+
+
+checkpoints = RemoteLoader("checkpoints", "https://api.aiart.doubtech.com/comfyui/checkpoints")
+vae = RemoteLoader("vae", "https://api.aiart.doubtech.com/comfyui/vae")
+lora = RemoteLoader("loras", "https://api.aiart.doubtech.com/comfyui/lora")
+clip = RemoteLoader("clip", "https://api.aiart.doubtech.com/comfyui/clip")
+controlNet = RemoteLoader("controlnet", "https://api.aiart.doubtech.com/comfyui/controlnet")
+controlNetDiff = RemoteLoader("controlnet", "https://api.aiart.doubtech.com/comfyui/controlnetdiff")
+style = RemoteLoader("style_models", "https://api.aiart.doubtech.com/comfyui/style")
+clipVision = RemoteLoader("clip_vision", "https://api.aiart.doubtech.com/comfyui/clipvision")
+unclipCheckpoint = RemoteLoader("checkpoints", "https://api.aiart.doubtech.com/comfyui/unclip")
+gligen = RemoteLoader("gligen", "https://api.aiart.doubtech.com/comfyui/gligen")
+hypernetwork = RemoteLoader("hypernetwork", "https://api.aiart.doubtech.com/comfyui/hypernetwork")
+configs = RemoteLoader("configs", "https://api.aiart.doubtech.com/comfyui/configs")
 
 
 class SubmitImage:
@@ -135,13 +233,377 @@ class SubmitImage:
             return ()
 
 
+class NodeCheckpointLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "ckpt_name": (checkpoints.list(), ),
+                             }}
+    RETURN_TYPES = ("MODEL", "CLIP", "VAE")
+    FUNCTION = "load_checkpoint"
+
+    CATEGORY = "loaders"
+
+    def load_checkpoint(self, ckpt_name, output_vae=True, output_clip=True):
+        pass
+
+
+class VAELoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "vae_name": (vae.list(), )}}
+    RETURN_TYPES = ("VAE",)
+    FUNCTION = "load_vae"
+
+    CATEGORY = "loaders"
+
+    #TODO: scale factor?
+    def load_vae(self, vae_name):
+        v = comfy.sd.VAE(ckpt_path=vae.download(vae_name))
+        return (v,)
+
+
+class LoraLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "model": ("MODEL",),
+                              "clip": ("CLIP", ),
+                              "lora_name": (lora.list(), ),
+                              "strength_model": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+                              "strength_clip": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+                              }}
+    RETURN_TYPES = ("MODEL", "CLIP")
+    FUNCTION = "load_lora"
+
+    CATEGORY = "loaders"
+
+    def load_lora(self, model, clip, lora_name, strength_model, strength_clip):
+        if strength_model == 0 and strength_clip == 0:
+            return (model, clip)
+
+        lora_path = lora.download("lora_name")
+        model_lora, clip_lora = comfy.sd.load_lora_for_models(model, clip, lora_path, strength_model, strength_clip)
+        return (model_lora, clip_lora)
+
+
+class CLIPLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "clip_name": (clip.list(), ),
+                             }}
+    RETURN_TYPES = ("CLIP",)
+    FUNCTION = "load_clip"
+
+    CATEGORY = "loaders"
+
+    def load_clip(self, clip_name):
+        clip_path = clip.download(clip_name)
+        c = comfy.sd.load_clip(ckpt_path=clip_path, embedding_directory=folder_paths.get_folder_paths("embeddings"))
+        return (c,)
+
+
+class CLIPVisionLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "clip_name": (clipVision.list(), ),
+                             }}
+    RETURN_TYPES = ("CLIP_VISION",)
+    FUNCTION = "load_clip"
+
+    CATEGORY = "loaders"
+
+    def load_clip(self, clip_name):
+        clip_path = clipVision.download(clip_name)
+        clip_vision = comfy.clip_vision.load(clip_path)
+        return (clip_vision,)
+
+
+class StyleModelLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "style_model_name": (style.list(), )}}
+
+    RETURN_TYPES = ("STYLE_MODEL",)
+    FUNCTION = "load_style_model"
+
+    CATEGORY = "loaders"
+
+    def load_style_model(self, style_model_name):
+        style_model_path = style.download(style_model_name)
+        style_model = comfy.sd.load_style_model(style_model_path)
+        return (style_model,)
+
+
+class GLIGENLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {"gligen_name": (gligen.list(),)}}
+
+    RETURN_TYPES = ("GLIGEN",)
+    FUNCTION = "load_gligen"
+
+    CATEGORY = "loaders"
+
+    def load_gligen(self, gligen_name):
+        gligen_path = gligen.download(gligen_name)
+        g = comfy.sd.load_gligen(gligen_path)
+        return (g,)
+
+
+class ControlNetLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "control_net_name": (controlNet.list(), )}}
+
+    RETURN_TYPES = ("CONTROL_NET",)
+    FUNCTION = "load_controlnet"
+
+    CATEGORY = "loaders"
+
+    def load_controlnet(self, control_net_name):
+        controlnet_path = controlNet.download(control_net_name)
+        controlnet = comfy.sd.load_controlnet(controlnet_path)
+        return (controlnet,)
+
+
+class DiffControlNetLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "model": ("MODEL",),
+                              "control_net_name": (controlNetDiff.list(), )}}
+
+    RETURN_TYPES = ("CONTROL_NET",)
+    FUNCTION = "load_controlnet"
+
+    CATEGORY = "loaders"
+
+    def load_controlnet(self, model, control_net_name):
+        controlnet_path = controlNetDiff.download(control_net_name)
+        controlnet = comfy.sd.load_controlnet(controlnet_path, model)
+        return (controlnet,)
+
+
+class unCLIPCheckpointLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "ckpt_name": (unclipCheckpoint.list(), ),
+                             }}
+    RETURN_TYPES = ("MODEL", "CLIP", "VAE", "CLIP_VISION")
+    FUNCTION = "load_checkpoint"
+
+    CATEGORY = "loaders"
+
+    def load_checkpoint(self, ckpt_name, output_vae=True, output_clip=True):
+        ckpt_path = unclipCheckpoint.download(ckpt_name)
+        out = comfy.sd.load_checkpoint_guess_config(ckpt_path, output_vae=True, output_clip=True, output_clipvision=True, embedding_directory=folder_paths.get_folder_paths("embeddings"))
+        return out
+
+class CheckpointLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "config_name": (configs.list(), ),
+                              "ckpt_name": (checkpoints.list(), )}}
+    RETURN_TYPES = ("MODEL", "CLIP", "VAE")
+    FUNCTION = "load_checkpoint"
+
+    CATEGORY = "advanced/loaders"
+
+    def load_checkpoint(self, config_name, ckpt_name, output_vae=True, output_clip=True):
+        config_path = configs.download(config_name)
+        ckpt_path = checkpoints.download(ckpt_name)
+        return comfy.sd.load_checkpoint(config_path, ckpt_path, output_vae=True, output_clip=True, embedding_directory=folder_paths.get_folder_paths("embeddings"))
+
+class DiffusersLoader:
+    @classmethod
+    def INPUT_TYPES(cls):
+        paths = []
+        for search_path in folder_paths.get_folder_paths("diffusers"):
+            if os.path.exists(search_path):
+                for root, subdir, files in os.walk(search_path, followlinks=True):
+                    if "model_index.json" in files:
+                        paths.append(os.path.relpath(root, start=search_path))
+
+        return {"required": {"model_path": (paths,), }}
+    RETURN_TYPES = ("MODEL", "CLIP", "VAE")
+    FUNCTION = "load_checkpoint"
+
+    CATEGORY = "advanced/loaders"
+
+    def load_checkpoint(self, model_path, output_vae=True, output_clip=True):
+        for search_path in folder_paths.get_folder_paths("diffusers"):
+            if os.path.exists(search_path):
+                path = os.path.join(search_path, model_path)
+                if os.path.exists(path):
+                    model_path = path
+                    break
+
+        return comfy.diffusers_load.load_diffusers(model_path, fp16=comfy.model_management.should_use_fp16(), output_vae=output_vae, output_clip=output_clip, embedding_directory=folder_paths.get_folder_paths("embeddings"))
+
+
+class LoadLatent:
+    @classmethod
+    def INPUT_TYPES(s):
+        input_dir = folder_paths.get_input_directory()
+        files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f)) and f.endswith(".latent")]
+        return {"required": {"latent": [sorted(files), ]}, }
+
+    CATEGORY = "_for_testing"
+
+    RETURN_TYPES = ("LATENT", )
+    FUNCTION = "load"
+
+    def load(self, latent):
+        latent_path = folder_paths.get_annotated_filepath(latent)
+        latent = safetensors.torch.load_file(latent_path, device="cpu")
+        samples = {"samples": latent["latent_tensor"].float()}
+        return (samples, )
+
+    @classmethod
+    def IS_CHANGED(s, latent):
+        image_path = folder_paths.get_annotated_filepath(latent)
+        m = hashlib.sha256()
+        with open(image_path, 'rb') as f:
+            m.update(f.read())
+        return m.digest().hex()
+
+    @classmethod
+    def VALIDATE_INPUTS(s, latent):
+        if not folder_paths.exists_annotated_filepath(latent):
+            return "Invalid latent file: {}".format(latent)
+        return True
+
+
+
+class LoadImage:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {"image": ("STRING", {
+                    "multiline": False,  # True if you want the field to look like the one on the ClipTextEncode node
+                    "default": "https://www.doubtech.ai/img/doubtech.ai-qrcode.png"
+                })},
+                }
+
+    CATEGORY = "image"
+
+    RETURN_TYPES = ("IMAGE", "MASK")
+    FUNCTION = "load_image"
+    def load_image(self, image):
+        i = Image.open(image)
+        i = ImageOps.exif_transpose(i)
+        image = i.convert("RGB")
+        image = np.array(image).astype(np.float32) / 255.0
+        image = torch.from_numpy(image)[None,]
+        if 'A' in i.getbands():
+            mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
+            mask = 1. - torch.from_numpy(mask)
+        else:
+            mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
+        return (image, mask)
+
+    @classmethod
+    def IS_CHANGED(s, image):
+        #image_path = folder_paths.get_annotated_filepath(image)
+        #m = hashlib.sha256()
+        #with open(image_path, 'rb') as f:
+        #    m.update(f.read())
+        #return m.digest().hex()
+        return True
+
+    @classmethod
+    def VALIDATE_INPUTS(s, image):
+        if not image:
+            return "Invalid image file: {}".format(image)
+
+        return True
+
+class LoadImageMask:
+    _color_channels = ["alpha", "red", "green", "blue"]
+    @classmethod
+    def INPUT_TYPES(s):
+        input_dir = folder_paths.get_input_directory()
+        files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f))]
+        return {"required":
+                    {"image": ("STRING", {
+                    "multiline": False,  # True if you want the field to look like the one on the ClipTextEncode node
+                    "default": "https://www.doubtech.ai/img/doubtech.ai-qrcode.png"
+                }),
+                     "channel": (s._color_channels, ), }
+                }
+
+    CATEGORY = "mask"
+
+    RETURN_TYPES = ("MASK",)
+    FUNCTION = "load_image"
+    def load_image(self, image, channel):
+        # Load the image from a url
+        i = Image.open(image)
+        i = ImageOps.exif_transpose(i)
+        if i.getbands() != ("R", "G", "B", "A"):
+            i = i.convert("RGBA")
+        mask = None
+        c = channel[0].upper()
+        if c in i.getbands():
+            mask = np.array(i.getchannel(c)).astype(np.float32) / 255.0
+            mask = torch.from_numpy(mask)
+            if c == 'A':
+                mask = 1. - mask
+        else:
+            mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
+        return (mask,)
+
+    @classmethod
+    def IS_CHANGED(s, image, channel):
+        """image_path = folder_paths.get_annotated_filepath(image)
+        m = hashlib.sha256()
+        with open(image_path, 'rb') as f:
+            m.update(f.read())
+        return m.digest().hex()"""
+        return True
+
+    @classmethod
+    def VALIDATE_INPUTS(s, image, channel):
+        if not folder_paths.exists_annotated_filepath(image):
+            return "Invalid image file: {}".format(image)
+
+        if channel not in s._color_channels:
+            return "Invalid color channel: {}".format(channel)
+
+        return True
+
+
 # A dictionary that contains all nodes you want to export with their names
 # NOTE: names should be globally unique
 NODE_CLASS_MAPPINGS = {
-    "SubmitImage": SubmitImage
+    "SubmitImage": SubmitImage,
+    "CheckpointLoaderSimple": NodeCheckpointLoader,
+    "VAELoader": VAELoader,
+    "LoraLoader": LoraLoader,
+    "CLIPLoader": CLIPLoader,
+    "ControlNetLoader": ControlNetLoader,
+    "DiffControlNetLoader": DiffControlNetLoader,
+    "StyleModelLoader": StyleModelLoader,
+    "CLIPVisionLoader": CLIPVisionLoader,
+    "unCLIPCheckpointLoader": unCLIPCheckpointLoader,
+    "GLIGENLoader": GLIGENLoader,
+    "CheckpointLoader": CheckpointLoader,
+    "DiffusersLoader": DiffusersLoader,
+    "LoadLatent": LoadLatent,
+    "LoadImage": LoadImage,
+    "LoadImageMask": LoadImageMask,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "SubmitImage": "Submit Image to DoubTech.ai"
+    "CheckpointLoader": "Load Checkpoint (With Config)",
+    "CheckpointLoaderSimple": "Load Checkpoint",
+    "VAELoader": "Load VAE",
+    "LoraLoader": "Load LoRA",
+    "CLIPLoader": "Load CLIP",
+    "ControlNetLoader": "Load ControlNet Model",
+    "DiffControlNetLoader": "Load ControlNet Model (diff)",
+    "StyleModelLoader": "Load Style Model",
+    "CLIPVisionLoader": "Load CLIP Vision",
+    "UpscaleModelLoader": "Load Upscale Model",
+    "PreviewImage": "Preview Image",
+    "LoadImage": "Load Image",
 }
