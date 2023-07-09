@@ -26,10 +26,6 @@ import comfy.utils
 import comfy.clip_vision
 
 import comfy.model_management
-import importlib
-
-import folder_paths
-import latent_preview
 
 import comfy
 from urllib import request
@@ -194,7 +190,7 @@ class SubmitImage:
 
     OUTPUT_NODE = True
 
-    CATEGORY = "image"
+    CATEGORY = "DoubTech/image"
 
     def upload(self, image, prompt, tags, title, alt, caption, set, private):
         print("uploading image...")
@@ -241,7 +237,7 @@ class NodeCheckpointLoader:
     RETURN_TYPES = ("MODEL", "CLIP", "VAE")
     FUNCTION = "load_checkpoint"
 
-    CATEGORY = "loaders"
+    CATEGORY = "DoubTech/loaders"
 
     def load_checkpoint(self, ckpt_name, output_vae=True, output_clip=True):
         pass
@@ -254,7 +250,7 @@ class VAELoader:
     RETURN_TYPES = ("VAE",)
     FUNCTION = "load_vae"
 
-    CATEGORY = "loaders"
+    CATEGORY = "DoubTech/loaders"
 
     #TODO: scale factor?
     def load_vae(self, vae_name):
@@ -274,7 +270,7 @@ class LoraLoader:
     RETURN_TYPES = ("MODEL", "CLIP")
     FUNCTION = "load_lora"
 
-    CATEGORY = "loaders"
+    CATEGORY = "DoubTech/loaders"
 
     def load_lora(self, model, clip, lora_name, strength_model, strength_clip):
         if strength_model == 0 and strength_clip == 0:
@@ -293,7 +289,7 @@ class CLIPLoader:
     RETURN_TYPES = ("CLIP",)
     FUNCTION = "load_clip"
 
-    CATEGORY = "loaders"
+    CATEGORY = "DoubTech/loaders"
 
     def load_clip(self, clip_name):
         clip_path = clip.download(clip_name)
@@ -309,7 +305,7 @@ class CLIPVisionLoader:
     RETURN_TYPES = ("CLIP_VISION",)
     FUNCTION = "load_clip"
 
-    CATEGORY = "loaders"
+    CATEGORY = "DoubTech/loaders"
 
     def load_clip(self, clip_name):
         clip_path = clipVision.download(clip_name)
@@ -325,7 +321,7 @@ class StyleModelLoader:
     RETURN_TYPES = ("STYLE_MODEL",)
     FUNCTION = "load_style_model"
 
-    CATEGORY = "loaders"
+    CATEGORY = "DoubTech/loaders"
 
     def load_style_model(self, style_model_name):
         style_model_path = style.download(style_model_name)
@@ -341,7 +337,7 @@ class GLIGENLoader:
     RETURN_TYPES = ("GLIGEN",)
     FUNCTION = "load_gligen"
 
-    CATEGORY = "loaders"
+    CATEGORY = "DoubTech/loaders"
 
     def load_gligen(self, gligen_name):
         gligen_path = gligen.download(gligen_name)
@@ -357,7 +353,7 @@ class ControlNetLoader:
     RETURN_TYPES = ("CONTROL_NET",)
     FUNCTION = "load_controlnet"
 
-    CATEGORY = "loaders"
+    CATEGORY = "DoubTech/loaders"
 
     def load_controlnet(self, control_net_name):
         controlnet_path = controlNet.download(control_net_name)
@@ -374,7 +370,7 @@ class DiffControlNetLoader:
     RETURN_TYPES = ("CONTROL_NET",)
     FUNCTION = "load_controlnet"
 
-    CATEGORY = "loaders"
+    CATEGORY = "DoubTech/loaders"
 
     def load_controlnet(self, model, control_net_name):
         controlnet_path = controlNetDiff.download(control_net_name)
@@ -390,7 +386,7 @@ class unCLIPCheckpointLoader:
     RETURN_TYPES = ("MODEL", "CLIP", "VAE", "CLIP_VISION")
     FUNCTION = "load_checkpoint"
 
-    CATEGORY = "loaders"
+    CATEGORY = "DoubTech/loaders"
 
     def load_checkpoint(self, ckpt_name, output_vae=True, output_clip=True):
         ckpt_path = unclipCheckpoint.download(ckpt_name)
@@ -405,7 +401,7 @@ class CheckpointLoader:
     RETURN_TYPES = ("MODEL", "CLIP", "VAE")
     FUNCTION = "load_checkpoint"
 
-    CATEGORY = "advanced/loaders"
+    CATEGORY = "DoubTech/advanced/loaders"
 
     def load_checkpoint(self, config_name, ckpt_name, output_vae=True, output_clip=True):
         config_path = configs.download(config_name)
@@ -426,7 +422,7 @@ class DiffusersLoader:
     RETURN_TYPES = ("MODEL", "CLIP", "VAE")
     FUNCTION = "load_checkpoint"
 
-    CATEGORY = "advanced/loaders"
+    CATEGORY = "DoubTech/advanced/loaders"
 
     def load_checkpoint(self, model_path, output_vae=True, output_clip=True):
         for search_path in folder_paths.get_folder_paths("diffusers"):
@@ -446,7 +442,7 @@ class LoadLatent:
         files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f)) and f.endswith(".latent")]
         return {"required": {"latent": [sorted(files), ]}, }
 
-    CATEGORY = "_for_testing"
+    CATEGORY = "DoubTech/_for_testing"
 
     RETURN_TYPES = ("LATENT", )
     FUNCTION = "load"
@@ -483,7 +479,7 @@ class LoadImage:
                 })},
                 }
 
-    CATEGORY = "image"
+    CATEGORY = "DoubTech/image"
 
     RETURN_TYPES = ("IMAGE", "MASK")
     FUNCTION = "load_image"
@@ -530,7 +526,7 @@ class LoadImageMask:
                      "channel": (s._color_channels, ), }
                 }
 
-    CATEGORY = "mask"
+    CATEGORY = "DoubTech/mask"
 
     RETURN_TYPES = ("MASK",)
     FUNCTION = "load_image"
@@ -574,36 +570,36 @@ class LoadImageMask:
 # A dictionary that contains all nodes you want to export with their names
 # NOTE: names should be globally unique
 NODE_CLASS_MAPPINGS = {
-    "SubmitImage": SubmitImage,
-    "CheckpointLoaderSimple": NodeCheckpointLoader,
-    "VAELoader": VAELoader,
-    "LoraLoader": LoraLoader,
-    "CLIPLoader": CLIPLoader,
-    "ControlNetLoader": ControlNetLoader,
-    "DiffControlNetLoader": DiffControlNetLoader,
-    "StyleModelLoader": StyleModelLoader,
-    "CLIPVisionLoader": CLIPVisionLoader,
-    "unCLIPCheckpointLoader": unCLIPCheckpointLoader,
-    "GLIGENLoader": GLIGENLoader,
-    "CheckpointLoader": CheckpointLoader,
-    "DiffusersLoader": DiffusersLoader,
-    "LoadLatent": LoadLatent,
-    "LoadImage": LoadImage,
-    "LoadImageMask": LoadImageMask,
+    "DTSubmitImage": SubmitImage,
+    "DTCheckpointLoaderSimple": NodeCheckpointLoader,
+    "DTVAELoader": VAELoader,
+    "DTLoraLoader": LoraLoader,
+    "DTCLIPLoader": CLIPLoader,
+    "DTControlNetLoader": ControlNetLoader,
+    "DTDiffControlNetLoader": DiffControlNetLoader,
+    "DTStyleModelLoader": StyleModelLoader,
+    "DTCLIPVisionLoader": CLIPVisionLoader,
+    "DTunCLIPCheckpointLoader": unCLIPCheckpointLoader,
+    "DTGLIGENLoader": GLIGENLoader,
+    "DTCheckpointLoader": CheckpointLoader,
+    "DTDiffusersLoader": DiffusersLoader,
+    "DTLoadLatent": LoadLatent,
+    "DTLoadImage": LoadImage,
+    "DTLoadImageMask": LoadImageMask,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "CheckpointLoader": "Load Checkpoint (With Config)",
-    "CheckpointLoaderSimple": "Load Checkpoint",
-    "VAELoader": "Load VAE",
-    "LoraLoader": "Load LoRA",
-    "CLIPLoader": "Load CLIP",
-    "ControlNetLoader": "Load ControlNet Model",
-    "DiffControlNetLoader": "Load ControlNet Model (diff)",
-    "StyleModelLoader": "Load Style Model",
-    "CLIPVisionLoader": "Load CLIP Vision",
-    "UpscaleModelLoader": "Load Upscale Model",
-    "PreviewImage": "Preview Image",
-    "LoadImage": "Load Image",
+    "DTCheckpointLoader": "Load Checkpoint (With Config)",
+    "DTCheckpointLoaderSimple": "Load Checkpoint",
+    "DTVAELoader": "Load VAE",
+    "DTLoraLoader": "Load LoRA",
+    "DTCLIPLoader": "Load CLIP",
+    "DTControlNetLoader": "Load ControlNet Model",
+    "DTDiffControlNetLoader": "Load ControlNet Model (diff)",
+    "DTStyleModelLoader": "Load Style Model",
+    "DTCLIPVisionLoader": "Load CLIP Vision",
+    "DTUpscaleModelLoader": "Load Upscale Model",
+    "DTPreviewImage": "Preview Image",
+    "DTLoadImage": "Load Image",
 }
