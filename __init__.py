@@ -68,12 +68,32 @@ class RemoteLoader:
         if key not in self.data:
             raise KeyError(f"Key {key} not found in {self.uri}")
 
-        # Use hashlib to create the md5 hash of the key
-        hash_object = hashlib.md5(key.encode())
-        md5_hash = hash_object.hexdigest()
+        key = self.data[key]
+
+        filename = ""
+        # if key is a url with a filename with any extension at the end use it
+        # verify this by checking if the key is a url and the last segment includes a .
+        if key.startswith("http") and key.split("/")[-1].find(".") > 0:
+            filename = key.split("/")[-1]
+            # strip off any query params from filename
+            filename = filename.split("?")[0]
+        else:
+            # Use hashlib to create the md5 hash of the key
+            hash_object = hashlib.md5(key.encode())
+            md5_hash = hash_object.hexdigest()
+            filename = md5_hash
+
+        # if download_path is set, use it joined with self.path
+        if '' != config.download_path:
+            folder = os.path.join(config.download_path, self.path)
+        else:
+            # otherwise, use the default path
+            folder = folder_paths.get_folder_paths(self.path)[0]
+
+        full_path = os.path.join(folder, filename)
 
         # Combine self.path with md5_hash to get the filepath
-        return folder_paths.get_full_path(self.path, md5_hash)
+        return full_path
 
     def download(self, key):
         if key not in self.data:
@@ -229,7 +249,7 @@ class SubmitImage:
             return ()
 
 
-class NodeCheckpointLoader:
+class DTNodeCheckpointLoader:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": { "ckpt_name": (checkpoints.list(), ),
@@ -240,10 +260,13 @@ class NodeCheckpointLoader:
     CATEGORY = "DoubTech/loaders"
 
     def load_checkpoint(self, ckpt_name, output_vae=True, output_clip=True):
-        pass
+        ckpt_path = checkpoints.download(ckpt_name)
+        out = comfy.sd.load_checkpoint_guess_config(ckpt_path, output_vae=True, output_clip=True,
+                                                    embedding_directory=folder_paths.get_folder_paths("embeddings"))
+        return out
 
 
-class VAELoader:
+class DTVAELoader:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": { "vae_name": (vae.list(), )}}
@@ -258,7 +281,7 @@ class VAELoader:
         return (v,)
 
 
-class LoraLoader:
+class DTLoraLoader:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": { "model": ("MODEL",),
@@ -281,7 +304,7 @@ class LoraLoader:
         return (model_lora, clip_lora)
 
 
-class CLIPLoader:
+class DTCLIPLoader:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": { "clip_name": (clip.list(), ),
@@ -297,7 +320,7 @@ class CLIPLoader:
         return (c,)
 
 
-class CLIPVisionLoader:
+class DTCLIPVisionLoader:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": { "clip_name": (clipVision.list(), ),
@@ -313,7 +336,7 @@ class CLIPVisionLoader:
         return (clip_vision,)
 
 
-class StyleModelLoader:
+class DTStyleModelLoader:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": { "style_model_name": (style.list(), )}}
@@ -329,7 +352,7 @@ class StyleModelLoader:
         return (style_model,)
 
 
-class GLIGENLoader:
+class DTGLIGENLoader:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {"gligen_name": (gligen.list(),)}}
@@ -345,7 +368,7 @@ class GLIGENLoader:
         return (g,)
 
 
-class ControlNetLoader:
+class DTControlNetLoader:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": { "control_net_name": (controlNet.list(), )}}
@@ -361,7 +384,7 @@ class ControlNetLoader:
         return (controlnet,)
 
 
-class DiffControlNetLoader:
+class DTDiffControlNetLoader:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": { "model": ("MODEL",),
@@ -378,7 +401,7 @@ class DiffControlNetLoader:
         return (controlnet,)
 
 
-class unCLIPCheckpointLoader:
+class DTunCLIPCheckpointLoader:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": { "ckpt_name": (unclipCheckpoint.list(), ),
@@ -393,7 +416,7 @@ class unCLIPCheckpointLoader:
         out = comfy.sd.load_checkpoint_guess_config(ckpt_path, output_vae=True, output_clip=True, output_clipvision=True, embedding_directory=folder_paths.get_folder_paths("embeddings"))
         return out
 
-class CheckpointLoader:
+class DTCheckpointLoader:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": { "config_name": (configs.list(), ),
@@ -408,7 +431,7 @@ class CheckpointLoader:
         ckpt_path = checkpoints.download(ckpt_name)
         return comfy.sd.load_checkpoint(config_path, ckpt_path, output_vae=True, output_clip=True, embedding_directory=folder_paths.get_folder_paths("embeddings"))
 
-class DiffusersLoader:
+class DTDiffusersLoader:
     @classmethod
     def INPUT_TYPES(cls):
         paths = []
@@ -435,7 +458,7 @@ class DiffusersLoader:
         return comfy.diffusers_load.load_diffusers(model_path, fp16=comfy.model_management.should_use_fp16(), output_vae=output_vae, output_clip=output_clip, embedding_directory=folder_paths.get_folder_paths("embeddings"))
 
 
-class LoadLatent:
+class DTLoadLatent:
     @classmethod
     def INPUT_TYPES(s):
         input_dir = folder_paths.get_input_directory()
@@ -469,7 +492,7 @@ class LoadLatent:
 
 
 
-class LoadImage:
+class DTLoadImage:
     @classmethod
     def INPUT_TYPES(s):
         return {"required":
@@ -512,7 +535,7 @@ class LoadImage:
 
         return True
 
-class LoadImageMask:
+class DTLoadImageMask:
     _color_channels = ["alpha", "red", "green", "blue"]
     @classmethod
     def INPUT_TYPES(s):
@@ -571,35 +594,36 @@ class LoadImageMask:
 # NOTE: names should be globally unique
 NODE_CLASS_MAPPINGS = {
     "DTSubmitImage": SubmitImage,
-    "DTCheckpointLoaderSimple": NodeCheckpointLoader,
-    "DTVAELoader": VAELoader,
-    "DTLoraLoader": LoraLoader,
-    "DTCLIPLoader": CLIPLoader,
-    "DTControlNetLoader": ControlNetLoader,
-    "DTDiffControlNetLoader": DiffControlNetLoader,
-    "DTStyleModelLoader": StyleModelLoader,
-    "DTCLIPVisionLoader": CLIPVisionLoader,
-    "DTunCLIPCheckpointLoader": unCLIPCheckpointLoader,
-    "DTGLIGENLoader": GLIGENLoader,
-    "DTCheckpointLoader": CheckpointLoader,
-    "DTDiffusersLoader": DiffusersLoader,
-    "DTLoadLatent": LoadLatent,
-    "DTLoadImage": LoadImage,
-    "DTLoadImageMask": LoadImageMask,
+    "DTCheckpointLoaderSimple": DTNodeCheckpointLoader,
+    "DTVAELoader": DTVAELoader,
+    "DTLoraLoader": DTLoraLoader,
+    "DTCLIPLoader": DTCLIPLoader,
+    "DTControlNetLoader": DTControlNetLoader,
+    "DTDiffControlNetLoader": DTDiffControlNetLoader,
+    "DTStyleModelLoader": DTStyleModelLoader,
+    "DTCLIPVisionLoader": DTCLIPVisionLoader,
+    "DTunCLIPCheckpointLoader": DTunCLIPCheckpointLoader,
+    "DTGLIGENLoader": DTGLIGENLoader,
+    "DTCheckpointLoader": DTCheckpointLoader,
+    "DTDiffusersLoader": DTDiffusersLoader,
+    "DTLoadLatent": DTLoadLatent,
+    "DTLoadImage": DTLoadImage,
+    "DTLoadImageMask": DTLoadImageMask,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "DTCheckpointLoader": "Load Checkpoint (With Config)",
-    "DTCheckpointLoaderSimple": "Load Checkpoint",
-    "DTVAELoader": "Load VAE",
-    "DTLoraLoader": "Load LoRA",
-    "DTCLIPLoader": "Load CLIP",
-    "DTControlNetLoader": "Load ControlNet Model",
-    "DTDiffControlNetLoader": "Load ControlNet Model (diff)",
-    "DTStyleModelLoader": "Load Style Model",
-    "DTCLIPVisionLoader": "Load CLIP Vision",
-    "DTUpscaleModelLoader": "Load Upscale Model",
-    "DTPreviewImage": "Preview Image",
-    "DTLoadImage": "Load Image",
+    "DTSubmitImage": "Submit Image",
+    "DTCheckpointLoader": "Load Checkpoint (With Config - Online)",
+    "DTCheckpointLoaderSimple": "Load Checkpoint (Online)",
+    "DTVAELoader": "Load VAE (Online)",
+    "DTLoraLoader": "Load LoRA (Online)",
+    "DTCLIPLoader": "Load CLIP (Online)",
+    "DTControlNetLoader": "Load ControlNet Model (Online)",
+    "DTDiffControlNetLoader": "Load ControlNet Model (diff) (Online)",
+    "DTStyleModelLoader": "Load Style Model (Online)",
+    "DTCLIPVisionLoader": "Load CLIP Vision (Online)",
+    "DTUpscaleModelLoader": "Load Upscale Model (Online)",
+    "DTPreviewImage": "Preview Image (Online)",
+    "DTLoadImage": "Load Image (Online)",
 }
