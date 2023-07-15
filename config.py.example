@@ -1,1 +1,7 @@
-apikey="your-doubtech.ai-key"
+apikey="your-key-here"
+download_path="D:\\Dropbox\\AI Image Generation\\Models"
+use_s3=False
+s3_bucket=""
+s3_region=""
+s3_key=""
+s3_secret=""
