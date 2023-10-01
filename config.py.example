@@ -1,5 +1,5 @@
 apikey="your-key-here"
-download_path="D:\\Dropbox\\AI Image Generation\\Models"
+download_path="..\\Models"
 use_s3=False
 s3_bucket=""
 s3_region=""

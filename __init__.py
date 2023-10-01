@@ -89,7 +89,14 @@ class SubmitImage:
 
         # Upload the image to the S3 bucket
         try:
-            s3_client.upload_fileobj(img_bytes, config.s3_bucket, s3_key)
+            s3_client.upload_fileobj(
+                img_bytes,
+                config.s3_bucket,
+                s3_key,
+                ExtraArgs={
+                    'ContentType': 'image/png'
+                }
+            )
             print(f"Image uploaded to S3 bucket: {config.s3_bucket}, key: {s3_key}")
 
             # Generate the URL of the uploaded image
@@ -100,8 +107,10 @@ class SubmitImage:
             return None
 
 
-    def upload(self, image, prompt_text, tags, title, alt, caption, set, private, prompt=None, extra_pnginfo=None):
+    def upload(self, image, prompt_text="", tags="", title="", alt="", caption="", set="", private="", prompt=None, extra_pnginfo=None):
         print("uploading image...")
+
+        print("Extras: ", extra_pnginfo)
 
         if variables.generated_prompt is not None:
             prompt_text = variables.generated_prompt
@@ -122,9 +131,19 @@ class SubmitImage:
         setName = urllib.parse.quote(variables.apply(set, "set"))
         prompt_text = urllib.parse.quote(variables.apply(prompt_text))
         caption = urllib.parse.quote(variables.apply(caption))
+        # if user is set in extra_pnginfo, use that, otherwise use the user from the global variables
+
+        user = ""
+        if "user" in extra_pnginfo:
+            user = urllib.parse.quote(variables.apply(extra_pnginfo["user"]))
+
+        job = ""
+        if "job" in extra_pnginfo:
+            job = urllib.parse.quote(variables.apply(f'{extra_pnginfo["job"]}'))
+
 
         # Create a post request to submit the image as the post body to the backend
-        uri = "https://api.aiart.doubtech.com/comfyui/submit?key={}&tags={}&title={}&alt={}&set={}&prompt={}&caption={}&private={}".format(
+        uri = "https://api.aiart.doubtech.com/comfyui/submit?key={}&tags={}&title={}&alt={}&set={}&prompt={}&caption={}&private={}&job={}&user={}".format(
             config.apikey,
             tags,
             title,
@@ -132,7 +151,9 @@ class SubmitImage:
             setName,
             prompt_text,
             caption,
-            private)
+            private,
+            job,
+            user)
 
         print(f"Submitting {prompt_text} with data:\n{prompt}")
 
