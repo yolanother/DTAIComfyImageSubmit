@@ -14,7 +14,7 @@ from PIL import Image, ImageOps
 
 import folder_paths
 from comfy_extras.chainner_models import model_loading
-from custom_nodes.DTGlobalVariables import variables
+from custom_nodes.DTAIComfyVariables import variables
 
 try:
     from torchvision.transforms import ToPILImage
