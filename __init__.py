@@ -60,7 +60,7 @@ class SubmitImage:
                     "multiline": False,  # True if you want the field to look like the one on the ClipTextEncode node
                     "default": ""
                 }),
-                "private": ("INT", {
+                "private": ("BOOLEAN", {
                     "default": False
                 })
             },
