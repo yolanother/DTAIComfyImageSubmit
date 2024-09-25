@@ -6,6 +6,7 @@ import json
 import urllib
 import io
 import base64
+import os
 
 from PIL.PngImagePlugin import PngInfo
 import numpy as np
@@ -22,7 +23,18 @@ except ImportError:
     def ToPILImage():
         pass
 
-from custom_nodes.DTAIComfyImageSubmit import config
+
+# define the type for config
+class Config:
+    apikey: os.getenv("AIART_APIKEY")
+    use_s3: os.getenv("AIART_USE_S3")
+    s3_bucket: os.getenv("AIART_S3_BUCKET")
+    s3_region: os.getenv("AIART_S3_REGION")
+    s3_key: os.getenv("AIART_S3_KEY")
+    s3_secret: os.getenv("AIART_S3_SECRET")
+
+
+config = Config()
 
 
 class SubmitImage:
@@ -37,7 +49,7 @@ class SubmitImage:
             },
             "optional": {
                 "prompt_text": ("STRING", {
-                    "multiline": False,  # True if you want the field to look like the one on the ClipTextEncode node
+                    "multiline": True,  # True if you want the field to look like the one on the ClipTextEncode node
                     "default": ""
                 }),
                 "tags": ("STRING", {
