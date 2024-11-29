@@ -1,0 +1,15 @@
+[project]
+name = "dtaicomfyimagesubmit"
+description = "A ComfyAI submit node to upload images to DoubTech.ai"
+version = "1.0.0"
+license = "LICENSE"
+dependencies = ["boto3"]
+
+[project.urls]
+Repository = "https://github.com/yolanother/DTAIComfyImageSubmit"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "DTAIComfyImageSubmit"
+Icon = ""
